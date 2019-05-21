@@ -1,3 +1,5 @@
+""" Prepare input for text generation from event selector predictions and prepared features """
+
 import json
 
 input_data_file = open("../data-processing/selection_val.jsonl")
