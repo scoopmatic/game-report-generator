@@ -18,6 +18,11 @@ cd ../game-report-generator
 python produce_game_input.py > game_inputs.txt
 
 
-# Generate text for events
+# Train generation model and generate text for events
 
-#sh generate_sentences.sh # Point to event-to-sentence generation script
+sh event2text/train.sh
+sh event2text/generate.sh
+
+# View results
+
+sh event2text/inspect_preds.sh
