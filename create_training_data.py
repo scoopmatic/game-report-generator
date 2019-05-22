@@ -98,7 +98,7 @@ def generate_input(event, context, xml_style=True):
 
 
 if len(sys.argv) < 2:
-    print("Usage: %s <annotated events JSON meta file>" % sys.argv[0], file=sys.stderr)
+    print("Usage: %s <annotated events JSON meta file> [<output JSON file]" % sys.argv[0], file=sys.stderr)
     sys.exit()
 
 meta = json.load(open(sys.argv[1]))
@@ -233,3 +233,11 @@ input_val_file.close()
 output_val_file.close()
 selection_file.close()
 selection_val_file.close()
+
+if len(sys.argv) > 2:
+    filename = sys.argv[2]
+else:
+    filename = sys.argv[1].replace('.json','') + '_1.json'
+
+print("Saving changes to", filename)
+json.dump(meta, open(filename, 'w'), indent=2, sort_keys=False)
