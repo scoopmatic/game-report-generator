@@ -19,9 +19,10 @@ python insert_selection.py events_AnnoFeats.json selection_val.jsonl ../event-se
 
 # Train generation model and generate text for events
 
-#sh event2text/train.sh
-#sh event2text/generate.sh
+cd event2text
+#sh train.sh
+#sh generate.sh
 
 # View results
 
-#sh event2text/inspect_preds.sh
+#sh inspect_preds.sh
