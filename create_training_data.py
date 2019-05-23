@@ -137,12 +137,14 @@ def add_game_info(events):
     final_score, home_team, guest_team = None, None, None
 
     # Calculate time diff between goals, and collect final_score/home/guest
+
     last_goal_time = None
     for i, event in enumerate(events):
         if event['Type'] == 'Maali':
             if last_goal_time:
                 events[i]['time_diff'] = timediff(last_goal_time, event['Time'])
             last_goal_time = event['Time']
+
 
         if event['Type'] == 'Lopputulos' and final_score == None:
             final_score = event['Score'].replace('-', '\u2013').replace('—', '\u2013') # normalize dash
@@ -228,6 +230,7 @@ def main(args):
                 sys.exit()
             if event['event_idx'] in multi_references:
                 continue
+
             if 'text' not in event or event['text'] == "":
                 continue
             reported.append(event)
