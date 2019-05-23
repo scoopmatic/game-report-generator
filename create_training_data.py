@@ -98,7 +98,7 @@ def generate_input(event, context, xml_style=True):
 
 
 if len(sys.argv) < 2:
-    print("Usage: %s <annotated events JSON meta file> [<output JSON file]" % sys.argv[0], file=sys.stderr)
+    print("Usage: %s <annotated events JSON meta file> [<output JSON file>]" % sys.argv[0], file=sys.stderr)
     sys.exit()
 
 meta = json.load(open(sys.argv[1]))

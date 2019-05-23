@@ -3,10 +3,14 @@
 import json
 import sys
 
+if len(sys.argv) < 4:
+    print("Usage: %s <events JSON file with features> <validation selection JSONL file> <CRF predictions file> [<output JSON file>]" % sys.argv[0], file=sys.stderr)
+    sys.exit()
 
-all_event_data = json.load(open("../data-processing/events_with_annotations.json_"))
-input_data_file = open("../data-processing/selection_val.jsonl")
-selection_pred_file = open("../event-selector/crf_val.pred")
+
+all_event_data = json.load(open(sys.argv[1]))
+input_data_file = open(sys.argv[2])
+selection_pred_file = open(sys.argv[3])
 
 seqs = []
 last_game = None
@@ -37,5 +41,10 @@ for game_i, labels in enumerate(all_labels):
             if ev['event_idx'] == event:
                 ev['selected'] = do_generate*1
 
+if len(sys.argv) >= 5:
+    filename = sys.argv[4]
+else:
+    filename = sys.argv[1].replace('.json') + '_Sel.json'
 
-json.dump(all_event_data, open("events_master.json", 'w'), indent=2, sort_keys=False)
+print("Writing JSON to", filename)
+json.dump(all_event_data, open(filename, 'w'), indent=2, sort_keys=False)
