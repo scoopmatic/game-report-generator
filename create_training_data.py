@@ -101,7 +101,7 @@ if len(sys.argv) < 2:
     print("Usage: %s <annotated events JSON meta file> [<output JSON file>]" % sys.argv[0], file=sys.stderr)
     sys.exit()
 
-meta = json.load(open(sys.argv[1]))
+meta = json.load(open(sys.argv[1]), object_pairs_hook=collections.OrderedDict)
 
 event_ref_pat = re.compile("^E\d+$")
 
