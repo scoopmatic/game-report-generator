@@ -114,6 +114,10 @@ output_val_file = open("val_output.txt", 'w')
 selection_file = open("selection_train.jsonl", 'w')
 selection_val_file = open("selection_val.jsonl", 'w')
 
+same_type = collections.defaultdict(lambda: 0)
+diff_type = collections.defaultdict(lambda: 0)
+ref_err = 0
+lencntr = collections.defaultdict(lambda: 0)
 val_size = 250
 for game_i, key in enumerate(meta):
     # Calculate time diff between goals
@@ -127,6 +131,8 @@ for game_i, key in enumerate(meta):
     # Collect events with mentions
     entries = collections.defaultdict(lambda: [])
     context = {}
+    game_text_lookup = collections.defaultdict(lambda: len(game_text_lookup))
+    last_of_type = collections.defaultdict(lambda: None)
     for event in meta[key]['events']:
         if event['Type'] == 'Lopputulos':
             context['final_score'] = event['Score']
@@ -137,10 +143,25 @@ for game_i, key in enumerate(meta):
         if 'text' in event:
             #print(event)
             event['reported'] = 1
+
             if event_ref_pat.search(event['text']): # Is event reference?
+                try:
+                    referenced_text = [ev for ev in meta[key]['events'] if 'text' in event and ev['event_idx'] == event['text']][0]['text']
+                    event['text_idx'] = game_text_lookup[referenced_text]
+                except KeyError:
+                    ref_err += 1
+
                 entries[event['text']].append(event)
             else:
+                event['text_idx'] = game_text_lookup[event['text']]
                 entries[event['event_idx']].append(event)
+
+            if len(entries) == 2:
+                if last_of_type[event['Type']] == list(entries.keys())[0]:
+                    same_type[event['Type']] += 1
+                else:
+                    diff_type[event['Type']] += 1
+            last_of_type[event['Type']] = event['event_idx']
         else:
             event['reported'] = 0
             entries[event['event_idx']].append(event)
@@ -148,8 +169,8 @@ for game_i, key in enumerate(meta):
     if not entries:
         continue
 
-    print()
-    print("GAME:", key)
+    ##print()
+    ##print("GAME:", key)
 
     # Identify deciding goal
     last_score = None
@@ -192,7 +213,7 @@ for game_i, key in enumerate(meta):
                     selection_val_file.write(json.dumps(event)+'\n')
             if event['reported'] == 0:
                 continue
-            print('   IN:', input)
+            ##print('   IN:', input)
             inputs.append(input)
             if not event_ref_pat.search(event['text']):
                 text = event['text']
@@ -206,11 +227,22 @@ for game_i, key in enumerate(meta):
             delim = ''
 
         if text:
-            print('   OUT:', text)
-            print()
-            if len(inputs)==1:# len(inputs)==1 #and event['Type'] in ['Maali']:
-                input = inputs[0]+'\n'
-                #input = 'events = %d | ' % len(inputs) + '|'.join(inputs)+'\n'
+            ##print('   OUT:', text)
+            ##print()
+            lencntr[len(inputs)] += 1
+            if len(inputs)==2:
+                print(key)
+                print(inputs[0])
+                print(inputs[1])
+                #print(inputs[2])
+                #print(inputs[3])
+
+                #for e in sorted(entries):
+                #    print(e, entries[e][0]['reported'], entries[e])
+                print()
+            if len(inputs)<=2:# len(inputs)==1 #and event['Type'] in ['Maali']:
+                #input = inputs[0]+'\n'
+                input = 'events = %d | ' % len(inputs) + ' | '.join(inputs)+'\n'
                 #output = event['Type']+': '+text.replace('\u2013', ' \u2013 ').replace('(', ' ( ').replace(')', ' ) ').replace('.', ' . ').replace(',', ' , ')+'\n'
                 output = text.replace('\u2013', ' \u2013 ').replace('(', ' ( ').replace(')', ' ) ').replace('.', ' . ').replace(',', ' , ')
                 output = "<%s> %s </%s>\n" % (event['Type'], output, event['Type'])
@@ -241,3 +273,13 @@ else:
 
 print("Saving changes to", filename)
 json.dump(meta, open(filename, 'w'), indent=2, sort_keys=False)
+
+s=0
+t=sum(lencntr.values())
+for k in lencntr:
+    s += lencntr[k]
+    print(k, lencntr[k], lencntr[k]/t, s, s/t)
+
+print("Reference errors:", ref_err)
+for t in diff_type:
+    print(t, same_type[t], diff_type[t])
