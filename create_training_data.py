@@ -4,6 +4,10 @@ import collections
 import re
 import random
 import argparse
+from collections import Counter
+
+
+event_ref_pat = re.compile("^E\d+$")
 
 
 def timediff(prior, latter):
@@ -21,6 +25,33 @@ def timediff(prior, latter):
     return "%d.%d" % (diff_mins, diff_secs)
 
 
+def average_lengths(data):
+
+    average = { "Lopputulos": Counter(), "Maali": Counter(), "Jäähy": Counter(), "Torjunnat": Counter() }
+
+    for game_i, key in enumerate(data): # key = game id
+        events = data[key]['events']
+        for event in events:
+            if "text" in event and event["text"] != "":
+                if event_ref_pat.search(event['text']):
+                    continue
+                tokenized = tokenize(event["text"])
+                average[ event["Type"] ].update( [ len(tokenized.split()) ] )
+
+    for key in average.keys():
+        print("Output lengths:", key, sorted( average[key].items() ), file=sys.stderr )
+ 
+def categorical_length(length):
+
+    if length <= 10:
+        return "short"
+    if length > 20:
+        return "long"
+    else:
+        return "medium"
+
+
+
 def event_input(event):
 
     pass
@@ -35,7 +66,7 @@ def tokenize(text):
     return text
 
 
-def print_single(event, home, guest, xml_style=True):
+def event2text(event, home, guest, xml_style=True):
     out = []
     # Define selection and order of information for training input
     #print(event)
@@ -95,16 +126,19 @@ def print_single(event, home, guest, xml_style=True):
 
     #out.append(('typestr', event['Type']))
 
-    string = ' '.join([('<%s> %s </%s>' % (k,tokenize(v),k)) if k not in ["type", "period", "minutes", "team_score"] else '<%s>%s</%s>' % (k,tokenize(v),k) for k,v in out])
+    event_string = ' '.join([('<%s> %s </%s>' % (k,tokenize(v),k)) if k not in ["type", "period", "minutes", "team_score"] else '<%s>%s</%s>' % (k,tokenize(v),k) for k,v in out])
 
-    text = event['text']
-    text = tokenize(text)
+    if 'text' in event:
+        text = event['text']
+        text = tokenize(text)
+        event_string = "<length>%s</length> " % categorical_length( len( text.split() ) )+event_string
+    else:
+        text = None
+        event_string = "<length>%s</length> " % random.choice( ["short", "short", "short", "medium", "medium", "long"] )+event_string # needed for empty extra test data
 
-    string = "<length>%s</length> " % len( text.split() ) +string
+    
 
-    print(string, text, sep="\t")
-
-    return 
+    return event_string, text
 
 
 def deciding(score):
@@ -196,13 +230,16 @@ def main(args):
 
     meta = json.load( open(args.json) )
 
-    event_ref_pat = re.compile("^E\d+$")
+    average_lengths(meta)
 
 
     # steps
     # 1) timediff
     # 2) first, deciding, last goal
     # 3) 
+
+    if args.extra_testfile != "":
+        extra_test = open(args.extra_testfile, "wt", encoding="utf-8")
 
     val_size = 250
     for game_i, key in enumerate(meta): # key = game id
@@ -223,23 +260,75 @@ def main(args):
 
         # events which should be included in the training data
         reported = []
+        reported_dict = {} # key: event_idx, value: event
         for event in events:
-            if args.mode != "single":
-                print("Mode", args.mode, "not implemented!", file=sys.stderr)
-                print("Exiting", file=sys.stderr)
-                sys.exit()
-            if event['event_idx'] in multi_references:
+            # single: return a filtered list
+            # full_report: return a list
+            # combined_events: return a list of list
+
+            if 'text' not in event or event['text'] == "": # skip negative events (not aligned to any sentence)
                 continue
 
-            if 'text' not in event or event['text'] == "":
+            if args.mode == "combined_events": # move reference events (text = 'E3') under original event_id
+                if event_ref_pat.search(event['text']):
+                    original_event_idx = event['text'].strip()
+                    if original_event_idx not in reported_dict:
+                        reported_dict[ original_event_idx ] = []
+                    reported_dict[ original_event_idx ].append(event)
+                    continue
+
+            # if single, skip multiple references
+            if args.mode == "single" and event['event_idx'] in multi_references:
                 continue
-            reported.append(event)
+
+            if event['event_idx'] not in reported_dict:
+                reported_dict[ event['event_idx'] ] = []
+            reported_dict[ event['event_idx'] ].append(event)
+
+        if len(reported_dict.keys()) == 0: # empty document
+            if args.extra_testfile != "": # use as extra test data, otherwise skip
+                for event in events:
+                    if event['Type'] == 'Jäähy':
+                        continue
+                    event_string, _ = event2text(event, home, guest)
+                    print(event_string, file=extra_test)
+                print(file=extra_test)
+            continue
+
+        sorted_keys = sorted(reported_dict.keys(), key=lambda k:(k[0], int(k[1:])) )
 
         # print!
-        for event in reported:
-            print_single(event, home, guest)
+        if args.mode == "single":
+            for event_idx in sorted_keys:
+                event = reported_dict[event_idx][0]
+                event_string, text = event2text(event, home, guest)
+                print(event_string, text, sep="\t")
 
+        elif args.mode == "full_report":
+            text_events = []
+            sentences = []
+            for event_idx in sorted_keys:
+                event = reported_dict[event_idx][0]
+                event_string, text = event2text(event, home, guest)
+                text_events.append( "<event> {e} </event>".format(e=event_string) )
+                if not event_ref_pat.search(event['text']):
+                    sentences.append(text)
+            print(" ".join(text_events), " ".join(sentences), sep="\t")
 
+        elif args.mode == "combined_events":
+            for event_idx in sorted_keys:
+                text_events = []
+                sentences = []
+                events = reported_dict[event_idx]
+                for event in events:
+                    event_string, text = event2text(event, home, guest)
+                    text_events.append( "<event> {e} </event>".format(e=event_string) )
+                    if not event_ref_pat.search(event['text']):
+                        sentences.append(text)
+                print(" ".join(text_events), " ".join(sentences), sep="\t")
+
+    if args.extra_testfile != "":
+        extra_test.close()
 
 
 
@@ -249,6 +338,7 @@ if __name__=="__main__":
     argparser.add_argument('--json', default="", help='annotated json file')
     argparser.add_argument('--output', default="", help='output file names (will be appended with train/dev and input/output)')
     argparser.add_argument('--mode', choices=['single', 'full_report', 'combined_events'], default= "single", help='What type of data to create (single = one input event into one sentence where multiple alignments are skipped -- full_report = sequence of positive events to a full, aligned text -- combined_events = one input into one sentence, but if reference sentence combines multiple events, then input is also combined to include all aligned events)')
+    argparser.add_argument('--extra_testfile', default= "", help='Use empty games as extra test data.')
     args = argparser.parse_args()
 
     main(args)
