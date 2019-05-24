@@ -60,7 +60,8 @@ def event_input(event):
 def tokenize(text):
 
     text = str(text)
-    text = text.replace('\u2013', ' \u2013 ').replace('(', ' ( ').replace(')', ' ) ').replace('.', ' . ').replace(',', ' , ').replace(':', ' : ').replace('-',' - ').replace('—', ' — ')
+    text = text.replace('\u2013', ' \u2013 ').replace('(', ' ( ').replace(')', ' ) ').replace(',', ' , ').replace(':', ' : ').replace('-',' - ').replace('—', ' — ')
+    text = re.sub(r"\.(\s|$)", r" .\1", text) # do not tokenize times '23.11'
     text = " ".join( text.split() )
 
     return text
@@ -93,7 +94,8 @@ def event2text(event, home, guest, xml_style=True):
         else:
             out.append(('team_score', '?'))
         out.append(('score', event['Score']))
-        out.append(('time', event['Time']))
+        out.append(('exact_time', event['Time']))
+        out.append(('approx_time', str(int( ( ( float(event['Time'])%20 ) //5 ) +1 )) +"/4" ))
 #        if 'time_diff' in event:
             #out.append(('timediff', timediff(context['last_goal_time'], event['Time'])))
 #            out.append(('timediff', event['time_diff']))
@@ -108,13 +110,16 @@ def event2text(event, home, guest, xml_style=True):
         out.append(('team', "{team_name} **{x}**".format(team_name=event['Team'], x="home" if event['Team'] == home else "guest")))
         out.append(('player', event['Player']))
         out.append(('minutes', event['Minutes']))
-        out.append(('time', event['Time']))
+        out.append(('exact_time', event['Time']))
+        out.append(('approx_time', str(int( ( ( float(event['Time'])%20 ) //5 ) +1 )) +"/4" ))
         out.append(('period', int(float(event['Time'])//20+1)))
     elif event['Type'] == 'Torjunnat':
         out.append(('type', 'save'))
         out.append(('team', "{team_name} **{x}**".format(team_name=event['Team'], x="home" if event['Team'] == home else "guest")))
         out.append(('player', event['Player']))
         out.append(('saves', event['Saves']))
+        if "Nollapeli" in event:
+            out.append(('nollapeli', 'Yes'))
         #out.append(('time', event['Time']))
     else:
         # Unrecognized event type, print everything
@@ -126,7 +131,7 @@ def event2text(event, home, guest, xml_style=True):
 
     #out.append(('typestr', event['Type']))
 
-    event_string = ' '.join([('<%s> %s </%s>' % (k,tokenize(v),k)) if k not in ["type", "period", "minutes", "team_score"] else '<%s>%s</%s>' % (k,tokenize(v),k) for k,v in out])
+    event_string = ' '.join([('<%s> %s </%s>' % (k,tokenize(v),k)) if k not in ["type", "period", "minutes", "team_score", "approx_time", "nollapeli"] else '<%s>%s</%s>' % (k,tokenize(v),k) for k,v in out])
 
     if 'text' in event:
         text = event['text']
@@ -190,6 +195,13 @@ def add_game_info(events):
     deciding_score = False
     last_goal = "0\u20130"
     for i, event in enumerate(events):
+    
+        if event['Type'] == "Torjunnat": # nollapeli
+            if event['Team'] == home_team and final_score.split("\u2013")[1] == "0":
+                events[i]["Nollapeli"] = "Yes"
+            if event['Team'] == guest_team and final_score.split("\u2013")[0] == "0":
+                events[i]["Nollapeli"] = "Yes"
+
         if event['Type'] == 'Maali':
             types = []
             event["Score"] = event["Score"].replace('-', '\u2013').replace('—', '\u2013')
