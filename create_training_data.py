@@ -45,7 +45,7 @@ def categorical_length(length):
 
     if length <= 10:
         return "short"
-    if length > 20:
+    if length > 13:
         return "long"
     else:
         return "medium"
@@ -85,8 +85,8 @@ def event2text(event, home, guest, xml_style=True):
     elif event['Type'] == 'Maali':
         out.append(('type', 'goal'))
         out.append(('team', "{team_name} **{x}**".format(team_name=event['Team'], x="home" if event['Team'] == home else "guest")))
-        out.append(('player', event['Player']))
-        out.append(('assist', event['Assist']))
+        out.append(('player', event['Player_fullname']))
+        out.append(('assist', event['Assist_fullname']))
         if home == event['Team']:
             out.append(('team_score', event['Score'].split('\u2013')[0]))
         elif guest == event['Team']:
@@ -94,7 +94,7 @@ def event2text(event, home, guest, xml_style=True):
         else:
             out.append(('team_score', '?'))
         out.append(('score', event['Score']))
-        out.append(('exact_time', event['Time']))
+        out.append(('exact_time', "{0:.2f}".format(event['Time'])))
         out.append(('approx_time', str(int( ( ( float(event['Time'])%20 ) //5 ) +1 )) +"/4" ))
 #        if 'time_diff' in event:
             #out.append(('timediff', timediff(context['last_goal_time'], event['Time'])))
@@ -108,15 +108,15 @@ def event2text(event, home, guest, xml_style=True):
     elif event['Type'] == 'J\u00e4\u00e4hy':
         out.append(('type', 'penalty'))
         out.append(('team', "{team_name} **{x}**".format(team_name=event['Team'], x="home" if event['Team'] == home else "guest")))
-        out.append(('player', event['Player']))
+        out.append(('player', event['Player_fullname']))
         out.append(('minutes', event['Minutes']))
-        out.append(('exact_time', event['Time']))
+        out.append(('exact_time', "{0:.2f}".format(event['Time'])))
         out.append(('approx_time', str(int( ( ( float(event['Time'])%20 ) //5 ) +1 )) +"/4" ))
         out.append(('period', int(float(event['Time'])//20+1)))
     elif event['Type'] == 'Torjunnat':
         out.append(('type', 'save'))
         out.append(('team', "{team_name} **{x}**".format(team_name=event['Team'], x="home" if event['Team'] == home else "guest")))
-        out.append(('player', event['Player']))
+        out.append(('player', event['Player_fullname']))
         out.append(('saves', event['Saves']))
         if "Nollapeli" in event:
             out.append(('nollapeli', 'Yes'))
@@ -235,7 +235,57 @@ def add_game_info(events):
     return events, home_team, guest_team
 
 
+def print_single(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
 
+    for event_idx in sorted_keys:
+        event = events_dict[event_idx][0]
+        if event['Type'] in skip_types:
+            continue
+        event_string, text = event2text(event, home, guest)
+        if include_output:
+            print(event_string, text, sep="\t", file=output_file)
+        else:
+            print(event_string, file=output_file)
+
+def print_full_report(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
+    text_events = []
+    sentences = []
+    for event_idx in sorted_keys:
+        event = events_dict[event_idx][0]
+        if event['Type'] in skip_types:
+            continue
+        event_string, text = event2text(event, home, guest)
+        text_events.append( "<event> {e} </event>".format(e=event_string) )
+        if 'text' in event and not event_ref_pat.search(event['text']):
+            sentences.append(text)
+    if not text_events:
+        return
+    if include_output:
+        print(" ".join(text_events), " ".join(sentences), sep="\t", file=output_file)
+    else:
+        print(" ".join(text_events), file=output_file)
+
+
+def print_combined_events(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
+    for event_idx in sorted_keys:
+        text_events = []
+        sentences = []
+        events = events_dict[event_idx]
+        for event in events:
+            if event['Type'] in skip_types:
+                continue
+            event_string, text = event2text(event, home, guest)
+            text_events.append( "<event> {e} </event>".format(e=event_string) )
+            if 'text' in event and not event_ref_pat.search(event['text']) and text.strip() != "":
+                sentences.append(text)
+        if not text_events:
+            continue
+        if include_output:
+            if not sentences:
+                continue
+            print(" ".join(text_events), " ".join(sentences), sep="\t", file=output_file)
+        else:
+            print(" ".join(text_events), file=output_file)
 
 
 def main(args):
@@ -297,47 +347,34 @@ def main(args):
                 reported_dict[ event['event_idx'] ] = []
             reported_dict[ event['event_idx'] ].append(event)
 
+        
+
         if len(reported_dict.keys()) == 0: # empty document
             if args.extra_testfile != "": # use as extra test data, otherwise skip
-                for event in events:
-                    if event['Type'] == 'Jäähy':
-                        continue
-                    event_string, _ = event2text(event, home, guest)
-                    print(event_string, file=extra_test)
+                sorted_keys = [ e['event_idx'] for e in events ]
+                reported_dict = {e['event_idx']:[e] for e in events}
+                if args.mode == "single":
+                    print_single(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'])
+
+                elif args.mode == "full_report":
+                    print_full_report(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'])
+
+                elif args.mode == "combined_events":
+                    print_combined_events(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'])
                 print(file=extra_test)
             continue
 
-        sorted_keys = sorted(reported_dict.keys(), key=lambda k:(k[0], int(k[1:])) )
+        sorted_keys = sorted(reported_dict.keys(), key=lambda k:(k[0], int(k[1:])) ) # sort by event_idx to get combined events in the correct order
 
         # print!
         if args.mode == "single":
-            for event_idx in sorted_keys:
-                event = reported_dict[event_idx][0]
-                event_string, text = event2text(event, home, guest)
-                print(event_string, text, sep="\t")
+            print_single(reported_dict, sorted_keys, home, guest, sys.stdout)
 
         elif args.mode == "full_report":
-            text_events = []
-            sentences = []
-            for event_idx in sorted_keys:
-                event = reported_dict[event_idx][0]
-                event_string, text = event2text(event, home, guest)
-                text_events.append( "<event> {e} </event>".format(e=event_string) )
-                if not event_ref_pat.search(event['text']):
-                    sentences.append(text)
-            print(" ".join(text_events), " ".join(sentences), sep="\t")
+            print_full_report(reported_dict, sorted_keys, home, guest, sys.stdout)
 
         elif args.mode == "combined_events":
-            for event_idx in sorted_keys:
-                text_events = []
-                sentences = []
-                events = reported_dict[event_idx]
-                for event in events:
-                    event_string, text = event2text(event, home, guest)
-                    text_events.append( "<event> {e} </event>".format(e=event_string) )
-                    if not event_ref_pat.search(event['text']):
-                        sentences.append(text)
-                print(" ".join(text_events), " ".join(sentences), sep="\t")
+            print_combined_events(reported_dict, sorted_keys, home, guest, sys.stdout)
 
     if args.extra_testfile != "":
         extra_test.close()
