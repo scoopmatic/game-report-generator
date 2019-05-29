@@ -4,6 +4,8 @@ import sys
 import numpy as np
 import argparse
 import re
+import os
+import glob
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "OpenNMT-py"))
 
@@ -27,7 +29,7 @@ def train(params):
     # preprocess
     os.system("python ./OpenNMT-py/preprocess.py -train_src {data}/ready/train.input -train_tgt {data}/ready/train.output -valid_src {data}/ready/devel.input -valid_tgt {data}/ready/devel.output -save_data {model}/demo -src_words_min_frequency 2 -tgt_words_min_frequency 2 -dynamic_dict --src_seq_length {maxl} --tgt_seq_length {maxl}".format(data=train_dir, model=model_dir, maxl=max_seq_len))
 
-    os.system("python ./OpenNMT-py/train.py -data {model}/demo -save_model {model}/demo-model -encoder_type brnn -train_steps 10000 -valid_steps 500 -save_checkpoint_steps 500 -gpu_ranks 0 -optim adam {p}".format(model=model_dir, p=params))
+    os.system("python ./OpenNMT-py/train.py -data {model}/demo -save_model {model}/demo-model -encoder_type brnn -train_steps 8000 -valid_steps 500 -save_checkpoint_steps 500 -gpu_ranks 0 -optim adam {p}".format(model=model_dir, p=params))
 
 
 def evaluate():
@@ -35,7 +37,7 @@ def evaluate():
     max_score = 0.0
     steps = None
 
-    for i in range(500, 10500, 500):
+    for i in range(500, 8500, 500):
         os.system("python ./OpenNMT-py/translate.py -gpu 0 -model {model}/demo-model_step_{idx}.pt -src {data}/ready/devel.input -output {model}/pred.txt -replace_unk -max_length {maxl}".format(data=train_dir, model=model_dir, idx=i, maxl=max_seq_len))
         os.system("perl OpenNMT-py/tools/multi-bleu.perl {data}/ready/devel.output < {model}/pred.txt > {model}/bleu.txt".format(data=train_dir, model=model_dir, maxl=max_seq_len))
 
@@ -122,6 +124,10 @@ def main(args):
 
     if os.path.exists(logging_fname):
         os.remove(logging_fname)
+
+    files = glob.glob(model_dir+"/*")
+    for _f in files:
+        os.remove(_f)
 
     # list of parameters:
 
