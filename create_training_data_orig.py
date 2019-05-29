@@ -97,28 +97,31 @@ def generate_input(event, context, xml_style=True):
     return re.sub(" +", " ", string)
 
 
-if len(sys.argv) < 2:
-    print("Usage: %s <annotated events JSON meta file> [<output JSON file>]" % sys.argv[0], file=sys.stderr)
+if len(sys.argv) < 5:
+    print("Usage: %s <annotated events JSON meta file> <generation input TXT> <generation output TXT> <event selection JSONL> [<output JSON file>]" % sys.argv[0], file=sys.stderr)
     sys.exit()
 
 meta = json.load(open(sys.argv[1]), object_pairs_hook=collections.OrderedDict)
 
 event_ref_pat = re.compile("^E\d+$")
 
-input_file = open("train_input.txt", 'w')
-output_file = open("train_output.txt", 'w')
+#input_file = open("train_input.txt", 'w')
+#output_file = open("train_output.txt", 'w')
+input_file = open(sys.argv[2], 'w')
+output_file = open(sys.argv[3], 'w')
 
-input_val_file = open("val_input.txt", 'w')
-output_val_file = open("val_output.txt", 'w')
+#input_val_file = open("val_input.txt", 'w')
+#output_val_file = open("val_output.txt", 'w')
 
-selection_file = open("selection_train.jsonl", 'w')
-selection_val_file = open("selection_val.jsonl", 'w')
+#selection_file = open("selection_train.jsonl", 'w')
+#selection_val_file = open("selection_val.jsonl", 'w')
+selection_file = open(sys.argv[4], 'w')
 
 same_type = collections.defaultdict(lambda: 0)
 diff_type = collections.defaultdict(lambda: 0)
 ref_err = 0
 lencntr = collections.defaultdict(lambda: 0)
-val_size = 250
+#val_size = 250
 for game_i, key in enumerate(meta):
     # Calculate time diff between goals
     last_goal_time = None
@@ -207,10 +210,10 @@ for game_i, key in enumerate(meta):
             input = generate_input(event, context, xml_style=False)
             event['input'] = input
             if not empty_game:
-                if val_size < 0:
-                    selection_file.write(json.dumps(event)+'\n')
-                else:
-                    selection_val_file.write(json.dumps(event)+'\n')
+                #if val_size < 0:
+                selection_file.write(json.dumps(event)+'\n')
+                #else:
+                #    selection_val_file.write(json.dumps(event)+'\n')
             if event['reported'] == 0:
                 continue
             ##print('   IN:', input)
@@ -247,27 +250,27 @@ for game_i, key in enumerate(meta):
                 output = text.replace('\u2013', ' \u2013 ').replace('(', ' ( ').replace(')', ' ) ').replace('.', ' . ').replace(',', ' , ')
                 output = "<%s> %s </%s>\n" % (event['Type'], output, event['Type'])
 
-                if val_size > 0:# and random.random() < 0.1:
-                    input_val_file.write(delim.join(input))
-                    output_val_file.write(delim.join(output))
-                else:
-                    input_file.write(delim.join(input))
-                    output_file.write(delim.join(output))
+                #if val_size > 0:# and random.random() < 0.1:
+                #    input_val_file.write(delim.join(input))
+                #    output_val_file.write(delim.join(output))
+                #else:
+                input_file.write(delim.join(input))
+                output_file.write(delim.join(output))
             else:
                 pass
 
-    val_size -= 1
+    #val_size -= 1
 
 
 input_file.close()
 output_file.close()
-input_val_file.close()
-output_val_file.close()
+#input_val_file.close()
+#output_val_file.close()
 selection_file.close()
-selection_val_file.close()
+#selection_val_file.close()
 
-if len(sys.argv) > 2:
-    filename = sys.argv[2]
+if len(sys.argv) > 5:
+    filename = sys.argv[5]
 else:
     filename = sys.argv[1].replace('.json','') + '_1.json'
 
