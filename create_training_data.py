@@ -4,6 +4,10 @@ import collections
 import re
 import random
 import argparse
+from collections import Counter
+
+
+event_ref_pat = re.compile("^E\d+$")
 
 
 def timediff(prior, latter):
@@ -21,6 +25,33 @@ def timediff(prior, latter):
     return "%d.%d" % (diff_mins, diff_secs)
 
 
+def average_lengths(data):
+
+    average = { "Lopputulos": Counter(), "Maali": Counter(), "Jäähy": Counter(), "Torjunnat": Counter() }
+
+    for game_i, key in enumerate(data): # key = game id
+        events = data[key]['events']
+        for event in events:
+            if "text" in event and event["text"] != "":
+                if event_ref_pat.search(event['text']):
+                    continue
+                tokenized = tokenize(event["text"])
+                average[ event["Type"] ].update( [ len(tokenized.split()) ] )
+
+    for key in average.keys():
+        print("Output lengths:", key, sorted( average[key].items() ), file=sys.stderr )
+ 
+def categorical_length(length):
+
+    if length <= 10:
+        return "short"
+    if length > 13:
+        return "long"
+    else:
+        return "medium"
+
+
+
 def event_input(event):
 
     pass
@@ -29,13 +60,14 @@ def event_input(event):
 def tokenize(text):
 
     text = str(text)
-    text = text.replace('\u2013', ' \u2013 ').replace('(', ' ( ').replace(')', ' ) ').replace('.', ' . ').replace(',', ' , ').replace(':', ' : ').replace('-',' - ').replace('—', ' — ')
+    text = text.replace('\u2013', ' \u2013 ').replace('(', ' ( ').replace(')', ' ) ').replace(',', ' , ').replace(':', ' : ').replace('-',' - ').replace('—', ' — ')
+    text = re.sub(r"\.(\s|$)", r" .\1", text) # do not tokenize times '23.11'
     text = " ".join( text.split() )
 
     return text
 
 
-def print_single(event, home, guest, xml_style=True):
+def event2text(event, home, guest, xml_style=True):
     out = []
     # Define selection and order of information for training input
     #print(event)
@@ -53,8 +85,8 @@ def print_single(event, home, guest, xml_style=True):
     elif event['Type'] == 'Maali':
         out.append(('type', 'goal'))
         out.append(('team', "{team_name} **{x}**".format(team_name=event['Team'], x="home" if event['Team'] == home else "guest")))
-        out.append(('player', event['Player']))
-        out.append(('assist', event['Assist']))
+        out.append(('player', event['Player_fullname']))
+        out.append(('assist', event['Assist_fullname']))
         if home == event['Team']:
             out.append(('team_score', event['Score'].split('\u2013')[0]))
         elif guest == event['Team']:
@@ -62,7 +94,8 @@ def print_single(event, home, guest, xml_style=True):
         else:
             out.append(('team_score', '?'))
         out.append(('score', event['Score']))
-        out.append(('time', event['Time']))
+        out.append(('exact_time', "{0:.2f}".format(event['Time'])))
+        out.append(('approx_time', str(int( ( ( float(event['Time'])%20 ) //5 ) +1 )) +"/4" ))
 #        if 'time_diff' in event:
             #out.append(('timediff', timediff(context['last_goal_time'], event['Time'])))
 #            out.append(('timediff', event['time_diff']))
@@ -75,15 +108,18 @@ def print_single(event, home, guest, xml_style=True):
     elif event['Type'] == 'J\u00e4\u00e4hy':
         out.append(('type', 'penalty'))
         out.append(('team', "{team_name} **{x}**".format(team_name=event['Team'], x="home" if event['Team'] == home else "guest")))
-        out.append(('player', event['Player']))
+        out.append(('player', event['Player_fullname']))
         out.append(('minutes', event['Minutes']))
-        out.append(('time', event['Time']))
+        out.append(('exact_time', "{0:.2f}".format(event['Time'])))
+        out.append(('approx_time', str(int( ( ( float(event['Time'])%20 ) //5 ) +1 )) +"/4" ))
         out.append(('period', int(float(event['Time'])//20+1)))
     elif event['Type'] == 'Torjunnat':
         out.append(('type', 'save'))
         out.append(('team', "{team_name} **{x}**".format(team_name=event['Team'], x="home" if event['Team'] == home else "guest")))
-        out.append(('player', event['Player']))
+        out.append(('player', event['Player_fullname']))
         out.append(('saves', event['Saves']))
+        if "Nollapeli" in event:
+            out.append(('nollapeli', 'Yes'))
         #out.append(('time', event['Time']))
     else:
         # Unrecognized event type, print everything
@@ -95,16 +131,19 @@ def print_single(event, home, guest, xml_style=True):
 
     #out.append(('typestr', event['Type']))
 
-    string = ' '.join([('<%s> %s </%s>' % (k,tokenize(v),k)) if k not in ["type", "period", "minutes", "team_score"] else '<%s>%s</%s>' % (k,tokenize(v),k) for k,v in out])
+    event_string = ' '.join([('<%s> %s </%s>' % (k,tokenize(v),k)) if k not in ["type", "period", "minutes", "team_score", "approx_time", "nollapeli"] else '<%s>%s</%s>' % (k,tokenize(v),k) for k,v in out])
 
-    text = event['text']
-    text = tokenize(text)
+    if 'text' in event:
+        text = event['text']
+        text = tokenize(text)
+        event_string = "<length>%s</length> " % categorical_length( len( text.split() ) )+event_string
+    else:
+        text = None
+        event_string = "<length>%s</length> " % random.choice( ["short", "short", "short", "medium", "medium", "long"] )+event_string # needed for empty extra test data
 
-    string = "<length>%s</length> " % len( text.split() ) +string
+    
 
-    print(string, text, sep="\t")
-
-    return 
+    return event_string, text
 
 
 def deciding(score):
@@ -156,6 +195,13 @@ def add_game_info(events):
     deciding_score = False
     last_goal = "0\u20130"
     for i, event in enumerate(events):
+    
+        if event['Type'] == "Torjunnat": # nollapeli
+            if event['Team'] == home_team and final_score.split("\u2013")[1] == "0":
+                events[i]["Nollapeli"] = "Yes"
+            if event['Team'] == guest_team and final_score.split("\u2013")[0] == "0":
+                events[i]["Nollapeli"] = "Yes"
+
         if event['Type'] == 'Maali':
             types = []
             event["Score"] = event["Score"].replace('-', '\u2013').replace('—', '\u2013')
@@ -189,20 +235,73 @@ def add_game_info(events):
     return events, home_team, guest_team
 
 
+def print_single(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
 
+    for event_idx in sorted_keys:
+        event = events_dict[event_idx][0]
+        if event['Type'] in skip_types:
+            continue
+        event_string, text = event2text(event, home, guest)
+        if include_output:
+            print(event_string, text, sep="\t", file=output_file)
+        else:
+            print(event_string, file=output_file)
+
+def print_full_report(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
+    text_events = []
+    sentences = []
+    for event_idx in sorted_keys:
+        event = events_dict[event_idx][0]
+        if event['Type'] in skip_types:
+            continue
+        event_string, text = event2text(event, home, guest)
+        text_events.append( "<event> {e} </event>".format(e=event_string) )
+        if 'text' in event and not event_ref_pat.search(event['text']):
+            sentences.append(text)
+    if not text_events:
+        return
+    if include_output:
+        print(" ".join(text_events), " ".join(sentences), sep="\t", file=output_file)
+    else:
+        print(" ".join(text_events), file=output_file)
+
+
+def print_combined_events(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
+    for event_idx in sorted_keys:
+        text_events = []
+        sentences = []
+        events = events_dict[event_idx]
+        for event in events:
+            if event['Type'] in skip_types:
+                continue
+            event_string, text = event2text(event, home, guest)
+            text_events.append( "<event> {e} </event>".format(e=event_string) )
+            if 'text' in event and not event_ref_pat.search(event['text']) and text.strip() != "":
+                sentences.append(text)
+        if not text_events:
+            continue
+        if include_output:
+            if not sentences:
+                continue
+            print(" ".join(text_events), " ".join(sentences), sep="\t", file=output_file)
+        else:
+            print(" ".join(text_events), file=output_file)
 
 
 def main(args):
 
     meta = json.load( open(args.json) )
 
-    event_ref_pat = re.compile("^E\d+$")
+    average_lengths(meta)
 
 
     # steps
     # 1) timediff
     # 2) first, deciding, last goal
     # 3) 
+
+    if args.extra_testfile != "":
+        extra_test = open(args.extra_testfile, "wt", encoding="utf-8")
 
     val_size = 250
     for game_i, key in enumerate(meta): # key = game id
@@ -223,23 +322,62 @@ def main(args):
 
         # events which should be included in the training data
         reported = []
+        reported_dict = {} # key: event_idx, value: event
         for event in events:
-            if args.mode != "single":
-                print("Mode", args.mode, "not implemented!", file=sys.stderr)
-                print("Exiting", file=sys.stderr)
-                sys.exit()
-            if event['event_idx'] in multi_references:
+            # single: return a filtered list
+            # full_report: return a list
+            # combined_events: return a list of list
+
+            if 'text' not in event or event['text'] == "": # skip negative events (not aligned to any sentence)
                 continue
 
-            if 'text' not in event or event['text'] == "":
+            if args.mode == "combined_events": # move reference events (text = 'E3') under original event_id
+                if event_ref_pat.search(event['text']):
+                    original_event_idx = event['text'].strip()
+                    if original_event_idx not in reported_dict:
+                        reported_dict[ original_event_idx ] = []
+                    reported_dict[ original_event_idx ].append(event)
+                    continue
+
+            # if single, skip multiple references
+            if args.mode == "single" and event['event_idx'] in multi_references:
                 continue
-            reported.append(event)
+
+            if event['event_idx'] not in reported_dict:
+                reported_dict[ event['event_idx'] ] = []
+            reported_dict[ event['event_idx'] ].append(event)
+
+        
+
+        if len(reported_dict.keys()) == 0: # empty document
+            if args.extra_testfile != "": # use as extra test data, otherwise skip
+                sorted_keys = [ e['event_idx'] for e in events ]
+                reported_dict = {e['event_idx']:[e] for e in events}
+                if args.mode == "single":
+                    print_single(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'])
+
+                elif args.mode == "full_report":
+                    print_full_report(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'])
+
+                elif args.mode == "combined_events":
+                    print_combined_events(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'])
+                print(file=extra_test)
+            continue
+
+        sorted_keys = sorted(reported_dict.keys(), key=lambda k:(k[0], int(k[1:])) ) # sort by event_idx to get combined events in the correct order
 
         # print!
-        for event in reported:
-            print_single(event, home, guest)
+        if args.mode == "single":
+            print_single(reported_dict, sorted_keys, home, guest, sys.stdout)
 
+        elif args.mode == "full_report":
+            print_full_report(reported_dict, sorted_keys, home, guest, sys.stdout)
 
+        elif args.mode == "combined_events":
+            print_combined_events(reported_dict, sorted_keys, home, guest, sys.stdout)
+
+    if args.extra_testfile != "":
+        extra_test.close()
 
 
 
@@ -249,6 +387,7 @@ if __name__=="__main__":
     argparser.add_argument('--json', default="", help='annotated json file')
     argparser.add_argument('--output', default="", help='output file names (will be appended with train/dev and input/output)')
     argparser.add_argument('--mode', choices=['single', 'full_report', 'combined_events'], default= "single", help='What type of data to create (single = one input event into one sentence where multiple alignments are skipped -- full_report = sequence of positive events to a full, aligned text -- combined_events = one input into one sentence, but if reference sentence combines multiple events, then input is also combined to include all aligned events)')
+    argparser.add_argument('--extra_testfile', default= "", help='Use empty games as extra test data.')
     args = argparser.parse_args()
 
     main(args)
