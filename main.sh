@@ -15,13 +15,13 @@ python create_training_data_orig.py test_Anno.json train_input.txt test_output.t
 ## Train event selector CRF and tag validation set (select events)
 
 cd ../event-selector
-sh train_crf.sh ../game-report-generator/train_selection.jsonl ../game-report-generator/devel_selection.jsonl
+sh train_crf.sh ../game-report-generator/train_selection.jsonl ../game-report-generator/devel_selection.jsonl ../game-report-generator/test_selection.jsonl
 
 
 # Insert selection prediction into events JSON file
 
 cd ../game-report-generator
-python insert_selection.py events_AnnoFeats.json devel_selection.jsonl ../event-selector/crf_val.pred events_AnnoFeatsSel.json
+python insert_selection.py test_Anno.json test_selection.jsonl ../event-selector/crf_val.pred test_AnnoSel.json
 
 
 # Train generation model and generate text for events
