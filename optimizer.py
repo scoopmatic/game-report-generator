@@ -4,6 +4,8 @@ import sys
 import numpy as np
 import argparse
 import re
+import os
+import glob
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "OpenNMT-py"))
 
@@ -27,7 +29,7 @@ def train(params):
     # preprocess
     os.system("python ./OpenNMT-py/preprocess.py -train_src {data}/ready/train.input -train_tgt {data}/ready/train.output -valid_src {data}/ready/devel.input -valid_tgt {data}/ready/devel.output -save_data {model}/demo -src_words_min_frequency 2 -tgt_words_min_frequency 2 -dynamic_dict --src_seq_length {maxl} --tgt_seq_length {maxl}".format(data=train_dir, model=model_dir, maxl=max_seq_len))
 
-    os.system("python ./OpenNMT-py/train.py -data {model}/demo -save_model {model}/demo-model -encoder_type brnn -train_steps 10000 -valid_steps 500 -save_checkpoint_steps 500 -gpu_ranks 0 -optim adam {p}".format(model=model_dir, p=params))
+    os.system("python ./OpenNMT-py/train.py -data {model}/demo -save_model {model}/demo-model -encoder_type brnn -train_steps 8000 -valid_steps 500 -save_checkpoint_steps 500 -gpu_ranks 0 -optim adam {p}".format(model=model_dir, p=params))
 
 
 def evaluate():
@@ -35,7 +37,7 @@ def evaluate():
     max_score = 0.0
     steps = None
 
-    for i in range(500, 10500, 500):
+    for i in range(500, 8500, 500):
         os.system("python ./OpenNMT-py/translate.py -gpu 0 -model {model}/demo-model_step_{idx}.pt -src {data}/ready/devel.input -output {model}/pred.txt -replace_unk -max_length {maxl}".format(data=train_dir, model=model_dir, idx=i, maxl=max_seq_len))
         os.system("perl OpenNMT-py/tools/multi-bleu.perl {data}/ready/devel.output < {model}/pred.txt > {model}/bleu.txt".format(data=train_dir, model=model_dir, maxl=max_seq_len))
 
@@ -123,6 +125,10 @@ def main(args):
     if os.path.exists(logging_fname):
         os.remove(logging_fname)
 
+    files = glob.glob(model_dir+"/*")
+    for _f in files:
+        os.remove(_f)
+
     # list of parameters:
 
     # word embeddings (50-700)      --word_vec_size
@@ -140,7 +146,7 @@ def main(args):
     bb=rbfopt.RbfoptUserBlackBox(8,np.array([50,  300,  0.0, 0.00001, 1,      0,    0,    16]),\
                                    np.array([700, 1000, 0.6, 0.01,    3,      1,    1,    64]),np.array(['I','I','R','R','I','I','I','I']), my_black_box)
 
-    settings = rbfopt.RbfoptSettings(max_clock_time=24*60*60*1,target_objval=0.0,num_cpus=1,minlp_solver_path='/home/jmnybl/optimizer_tools/bonmin', nlp_solver_path='/home/jmnybl/optimizer_tools/Ipopt-3.7.1-linux-x86_64-gcc4.3.2/bin/ipopt')
+    settings = rbfopt.RbfoptSettings(max_clock_time=36*60*60*1,target_objval=0.0,num_cpus=1,minlp_solver_path='/home/jmnybl/optimizer_tools/bonmin', nlp_solver_path='/home/jmnybl/optimizer_tools/Ipopt-3.7.1-linux-x86_64-gcc4.3.2/bin/ipopt')
 
     alg = rbfopt.RbfoptAlgorithm(settings, bb)
     val, x, itercount, evalcount, fast_evalcount = alg.optimize()
