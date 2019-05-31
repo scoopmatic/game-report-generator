@@ -6,6 +6,7 @@ from itertools import repeat
 import sys
 import os
 import io
+import re
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "OpenNMT-py"))
 from onmt.utils.logging import init_logger
@@ -15,6 +16,7 @@ from onmt.translate.translator import build_translator
 import onmt.opts as opts
 from onmt.utils.parse import ArgumentParser
 
+length_regex = re.compile("<length>[a-z]+</length>")
 
 def yield_games(f):
 
@@ -26,10 +28,12 @@ def yield_games(f):
                 yield events
             events = []
             continue
-        events.append(line)
+        # try generating each length
+        events.append([re.sub(length_regex, "<length>short</length>", line), re.sub(length_regex, "<length>medium</length>", line), re.sub(length_regex, "<length>long</length>", line)])
     else:
         if events:
             yield events
+
 
 
 def main(opt):
@@ -44,11 +48,23 @@ def main(opt):
     for i, game in enumerate(yield_games(sys.stdin)):
         logger.info("Translating shard %d." % i)
 
-        scores, predictions = translator.translate(src=game, batch_size=opt.batch_size)
-        f_output.truncate(0) # clear this to prevent eating memory
-        text_output=[p[0] for p in predictions]
-        for p in text_output:
-            print(p)
+        events = []
+        for event_group in game:
+
+            scores, predictions = translator.translate(src=event_group, batch_size=opt.batch_size)
+
+            # PRED SCORE = cumulated log likelihood of the generated sequence
+
+            f_output.truncate(0) # clear this to prevent eating memory
+            text_output=[p[0] for p in predictions]
+            normalized_scores = [s[0].item()/len(t.split()) for s, t in zip(scores, text_output)]
+
+            max_index = normalized_scores.index(max(normalized_scores))
+
+            events.append( (normalized_scores[max_index], text_output[max_index]) )
+
+        for s, t in events:
+            print(t)
         print()
 
 

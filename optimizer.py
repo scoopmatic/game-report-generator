@@ -146,7 +146,7 @@ def main(args):
     bb=rbfopt.RbfoptUserBlackBox(8,np.array([50,  300,  0.0, 0.00001, 1,      0,    0,    16]),\
                                    np.array([700, 1000, 0.6, 0.01,    3,      1,    1,    64]),np.array(['I','I','R','R','I','I','I','I']), my_black_box)
 
-    settings = rbfopt.RbfoptSettings(max_clock_time=24*60*60*1,target_objval=0.0,num_cpus=1,minlp_solver_path='/home/jmnybl/optimizer_tools/bonmin', nlp_solver_path='/home/jmnybl/optimizer_tools/Ipopt-3.7.1-linux-x86_64-gcc4.3.2/bin/ipopt')
+    settings = rbfopt.RbfoptSettings(max_clock_time=36*60*60*1,target_objval=0.0,num_cpus=1,minlp_solver_path='/home/jmnybl/optimizer_tools/bonmin', nlp_solver_path='/home/jmnybl/optimizer_tools/Ipopt-3.7.1-linux-x86_64-gcc4.3.2/bin/ipopt')
 
     alg = rbfopt.RbfoptAlgorithm(settings, bb)
     val, x, itercount, evalcount, fast_evalcount = alg.optimize()
