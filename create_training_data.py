@@ -40,7 +40,7 @@ def average_lengths(data):
 
     for key in average.keys():
         print("Output lengths:", key, sorted( average[key].items() ), file=sys.stderr )
- 
+
 def categorical_length(length):
 
     if length <= 10:
@@ -141,7 +141,7 @@ def event2text(event, home, guest, xml_style=True):
         text = None
         event_string = "<length>%s</length> " % random.choice( ["short", "short", "short", "medium", "medium", "long"] )+event_string # needed for empty extra test data
 
-    
+
 
     return event_string, text
 
@@ -164,7 +164,7 @@ def deciding(score):
 
     print("Cannot decide deciding score", score, file=sys.stderr)
     return None
-    
+
 
 
 def add_game_info(events):
@@ -195,7 +195,7 @@ def add_game_info(events):
     deciding_score = False
     last_goal = "0\u20130"
     for i, event in enumerate(events):
-    
+
         if event['Type'] == "Torjunnat": # nollapeli
             if event['Team'] == home_team and final_score.split("\u2013")[1] == "0":
                 events[i]["Nollapeli"] = "Yes"
@@ -235,13 +235,16 @@ def add_game_info(events):
     return events, home_team, guest_team
 
 
-def print_single(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
+def print_single(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[], game_id=None):
 
     for event_idx in sorted_keys:
         event = events_dict[event_idx][0]
         if event['Type'] in skip_types:
             continue
         event_string, text = event2text(event, home, guest)
+        if game_id:
+            event_string = event_idx+'|'+event_string
+            event_string = game_id+'|'+event_string
         if include_output:
             print(event_string, text, sep="\t", file=output_file)
         else:
@@ -290,7 +293,7 @@ def print_combined_events(events_dict, sorted_keys, home, guest, output_file, in
 
 def main(args):
 
-    meta = json.load( open(args.json) )
+    meta = json.load( open(args.json), object_pairs_hook=collections.OrderedDict )
 
     average_lengths(meta)
 
@@ -298,14 +301,14 @@ def main(args):
     # steps
     # 1) timediff
     # 2) first, deciding, last goal
-    # 3) 
+    # 3)
 
     if args.extra_testfile != "":
         extra_test = open(args.extra_testfile, "wt", encoding="utf-8")
 
     val_size = 250
     for game_i, key in enumerate(meta): # key = game id
-        
+
         events = meta[key]['events']
 
         events, home, guest = add_game_info(events) # timediff, first/deciding/last goals, home/guest teams
@@ -347,14 +350,15 @@ def main(args):
                 reported_dict[ event['event_idx'] ] = []
             reported_dict[ event['event_idx'] ].append(event)
 
-        
-
+        game_id = None
+        if args.with_id:
+            game_id = key
         if len(reported_dict.keys()) == 0: # empty document
             if args.extra_testfile != "": # use as extra test data, otherwise skip
                 sorted_keys = [ e['event_idx'] for e in events ]
                 reported_dict = {e['event_idx']:[e] for e in events}
                 if args.mode == "single":
-                    print_single(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'])
+                    print_single(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'], game_id=game_id)
 
                 elif args.mode == "full_report":
                     print_full_report(reported_dict, sorted_keys, home, guest, extra_test, include_output=False, skip_types=['Jäähy'])
@@ -368,7 +372,7 @@ def main(args):
 
         # print!
         if args.mode == "single":
-            print_single(reported_dict, sorted_keys, home, guest, sys.stdout)
+            print_single(reported_dict, sorted_keys, home, guest, sys.stdout, game_id=game_id)
 
         elif args.mode == "full_report":
             print_full_report(reported_dict, sorted_keys, home, guest, sys.stdout)
@@ -388,7 +392,7 @@ if __name__=="__main__":
     argparser.add_argument('--output', default="", help='output file names (will be appended with train/dev and input/output)')
     argparser.add_argument('--mode', choices=['single', 'full_report', 'combined_events'], default= "single", help='What type of data to create (single = one input event into one sentence where multiple alignments are skipped -- full_report = sequence of positive events to a full, aligned text -- combined_events = one input into one sentence, but if reference sentence combines multiple events, then input is also combined to include all aligned events)')
     argparser.add_argument('--extra_testfile', default= "", help='Use empty games as extra test data.')
+    argparser.add_argument('--with_id', action='store_true', help='Include game/event IDs in output.')
     args = argparser.parse_args()
 
     main(args)
-
