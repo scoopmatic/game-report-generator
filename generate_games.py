@@ -20,19 +20,40 @@ length_regex = re.compile("<length>[a-z]+</length>")
 
 def yield_games(f):
 
+    comments = []
     events = []
     for line in f:
         line=line.strip()
+        if line.startswith("#"):
+            comments.append(line)
+            continue
         if not line:
             if events:
-                yield events
+                yield comments, events
             events = []
+            comments = []
             continue
         # try generating each length
         events.append([re.sub(length_regex, "<length>short</length>", line), re.sub(length_regex, "<length>medium</length>", line), re.sub(length_regex, "<length>long</length>", line)])
     else:
         if events:
-            yield events
+            yield comments, events
+
+
+def detokenize(text):
+
+    text = str(text)
+    text = re.sub("</?[a-z]+>", "", text)
+    text = re.sub("\*\*[a-z]+\*\*", "", text)
+    text = text.replace(' \u2013 ', '\u2013').replace(' ( ', ' (').replace(' ) ', ') ').replace(' , ', ', ').replace(' : ', ':').replace(' — ', '—')
+    text = re.sub(r"([0-9])\s-\s([0-9])", r"\1-\2", text) # detokenize times '3 - 5 -osuman'
+    text = re.sub(r"([0-9])\s-\s([a-zA-ZÅÄÖåäö\)])", r"\1 -\2", text) # detokenize times '3 - 5 -osuman'
+    text = re.sub(r"([a-zA-ZåäöÅÄÖ])\s-\s([a-zA-ZÅÄÖåäö])", r"\1-\2", text) # Juha - Pekka H.
+    text = text.replace(" .", ".")
+    
+    text = " ".join( text.split() )
+
+    return text
 
 
 
@@ -45,7 +66,7 @@ def main(opt):
 
     translator = build_translator(opt, report_score=False, out_file=f_output)
 
-    for i, game in enumerate(yield_games(sys.stdin)):
+    for i, (comments, game) in enumerate(yield_games(sys.stdin)):
         logger.info("Translating shard %d." % i)
 
         events = []
@@ -61,10 +82,11 @@ def main(opt):
 
             max_index = normalized_scores.index(max(normalized_scores))
 
-            events.append( (normalized_scores[max_index], text_output[max_index]) )
+            events.append( (normalized_scores[max_index], detokenize(text_output[max_index])) )
 
-        for s, t in events:
-            print(t)
+        for comm in comments:
+            print(comm)
+        print(" ".join([t for s, t in events]))
         print()
 
 
