@@ -235,19 +235,21 @@ def add_game_info(events):
     return events, home_team, guest_team
 
 
-def print_single(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
+def print_single(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[], news_article=None):
 
     for event_idx in sorted_keys:
         event = events_dict[event_idx][0]
         if event['Type'] in skip_types:
             continue
         event_string, text = event2text(event, home, guest)
+        if news_article is not None:
+            event_string+=" ||| "+tokenize(news_article.replace("\n"," ").replace("\t", " "))
         if include_output:
             print(event_string, text, sep="\t", file=output_file)
         else:
             print(event_string, file=output_file)
 
-def print_full_report(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
+def print_full_report(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[], news_article=None):
     text_events = []
     sentences = []
     for event_idx in sorted_keys:
@@ -266,7 +268,7 @@ def print_full_report(events_dict, sorted_keys, home, guest, output_file, includ
         print(" ".join(text_events), file=output_file)
 
 
-def print_combined_events(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[]):
+def print_combined_events(events_dict, sorted_keys, home, guest, output_file, include_output=True, skip_types=[], news_article=None):
     for event_idx in sorted_keys:
         text_events = []
         sentences = []
@@ -291,6 +293,10 @@ def print_combined_events(events_dict, sorted_keys, home, guest, output_file, in
 def main(args):
 
     meta = json.load( open(args.json) )
+
+    if args.include_news_article != "no":
+        news_data = json.load( open(args.include_news_article) )
+        
 
     average_lengths(meta)
 
@@ -327,6 +333,15 @@ def main(args):
             # single: return a filtered list
             # full_report: return a list
             # combined_events: return a list of list
+
+            if args.use_selected_labels:
+                if "selected" not in event:
+                    print("Selected label not found for", event, file=sys.stderr)
+                    print("Exiting", file=sys.stderr)
+                    sys.exit()
+                if event["selected"] == 0:
+                    continue
+
 
             if 'text' not in event or event['text'] == "": # skip negative events (not aligned to any sentence)
                 continue
@@ -366,15 +381,20 @@ def main(args):
 
         sorted_keys = sorted(reported_dict.keys(), key=lambda k:(k[0], int(k[1:])) ) # sort by event_idx to get combined events in the correct order
 
+        if args.include_news_article != "no":
+            news = news_data[key]["news_articles"][0]["text"]
+        else:
+            news = nome
+
         # print!
         if args.mode == "single":
-            print_single(reported_dict, sorted_keys, home, guest, sys.stdout)
+            print_single(reported_dict, sorted_keys, home, guest, sys.stdout, news_article=news)
 
         elif args.mode == "full_report":
-            print_full_report(reported_dict, sorted_keys, home, guest, sys.stdout)
+            print_full_report(reported_dict, sorted_keys, home, guest, sys.stdout, news_article=news)
 
         elif args.mode == "combined_events":
-            print_combined_events(reported_dict, sorted_keys, home, guest, sys.stdout)
+            print_combined_events(reported_dict, sorted_keys, home, guest, sys.stdout, news_article=news)
 
     if args.extra_testfile != "":
         extra_test.close()
@@ -387,7 +407,9 @@ if __name__=="__main__":
     argparser.add_argument('--json', default="", help='annotated json file')
     argparser.add_argument('--output', default="", help='output file names (will be appended with train/dev and input/output)')
     argparser.add_argument('--mode', choices=['single', 'full_report', 'combined_events'], default= "single", help='What type of data to create (single = one input event into one sentence where multiple alignments are skipped -- full_report = sequence of positive events to a full, aligned text -- combined_events = one input into one sentence, but if reference sentence combines multiple events, then input is also combined to include all aligned events)')
+    argparser.add_argument('--include_news_article', default="no", help='input original news article as extra input')
     argparser.add_argument('--extra_testfile', default= "", help='Use empty games as extra test data.')
+    argparser.add_argument('--use_selected_labels', default=False, action="store_true", help='Use selected labels predicted with event selector.')
     args = argparser.parse_args()
 
     main(args)
