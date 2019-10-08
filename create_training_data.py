@@ -326,13 +326,17 @@ def main(args):
         # events which should be included in the training data
         reported = []
         reported_dict = {} # key: event_idx, value: event
+        empty_game = True
         for event in events:
             # single: return a filtered list
             # full_report: return a list
             # combined_events: return a list of list
 
             if 'text' not in event or event['text'] == "": # skip negative events (not aligned to any sentence)
-                continue
+                if args.with_null_events:
+                    event['text'] = "[NULL]"
+                else:
+                    continue
 
             if args.mode == "combined_events": # move reference events (text = 'E3') under original event_id
                 if event_ref_pat.search(event['text']):
@@ -350,10 +354,13 @@ def main(args):
                 reported_dict[ event['event_idx'] ] = []
             reported_dict[ event['event_idx'] ].append(event)
 
+            if event['text'] != "[NULL]":
+                empty_game = False
+
         game_id = None
         if args.with_id:
             game_id = key
-        if len(reported_dict.keys()) == 0: # empty document
+        if len(reported_dict.keys()) == 0 or empty_game: # empty document
             if args.extra_testfile != "": # use as extra test data, otherwise skip
                 sorted_keys = [ e['event_idx'] for e in events ]
                 reported_dict = {e['event_idx']:[e] for e in events}
@@ -393,6 +400,7 @@ if __name__=="__main__":
     argparser.add_argument('--mode', choices=['single', 'full_report', 'combined_events'], default= "single", help='What type of data to create (single = one input event into one sentence where multiple alignments are skipped -- full_report = sequence of positive events to a full, aligned text -- combined_events = one input into one sentence, but if reference sentence combines multiple events, then input is also combined to include all aligned events)')
     argparser.add_argument('--extra_testfile', default= "", help='Use empty games as extra test data.')
     argparser.add_argument('--with_id', action='store_true', help='Include game/event IDs in output.')
+    argparser.add_argument('--with_null_events', action='store_true', help='Include unaligned events.')
     args = argparser.parse_args()
 
     main(args)
