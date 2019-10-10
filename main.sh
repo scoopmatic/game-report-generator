@@ -10,7 +10,12 @@ python create_training_data_orig.py train_Anno.json train_input.txt train_output
 python create_training_data_orig.py devel_Anno.json train_input.txt devel_output.txt devel_selection.jsonl devel_AnnoFeats.json
 python create_training_data_orig.py test_Anno.json train_input.txt test_output.txt test_selection.jsonl test_AnnoFeats.json
 
-## call python create_trainin_data.py to create alternative training data for generation
+# Create alternative training data for generation
+mkdir event2text/data
+python create_training_data.py --json train_Anno.json --mode single > event2text/data/train.all
+python create_training_data.py --json devel_Anno.json --mode single > event2text/data/devel.all
+python create_training_data.py --json test_Anno.json --mode single > event2text/data/test.all
+
 
 ## Train event selector CRF and tag validation set (select events)
 
@@ -27,7 +32,7 @@ python insert_selection.py test_Anno.json test_selection.jsonl ../event-selector
 # Train generation model and generate text for events
 
 cd event2text
-#sh train.sh
+bash train.sh
 #sh generate.sh
 
 # View results

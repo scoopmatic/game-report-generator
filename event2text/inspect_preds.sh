@@ -1,1 +1,1 @@
-paste -d "\n" data/game_inputs.txt_ test_pred.txt /dev/null
+paste -d "\n" data/test.input test_pred.txt /dev/null
