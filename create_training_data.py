@@ -299,7 +299,7 @@ def main(args):
 
     if args.include_news_article != "no":
         news_data = json.load( open(args.include_news_article) )
-        
+
 
     average_lengths(meta)
 
@@ -395,7 +395,7 @@ def main(args):
         if args.include_news_article != "no":
             news = news_data[key]["news_articles"][0]["text"]
         else:
-            news = nome
+            news = None
 
         # print!
         if args.mode == "single":
